@@ -1,10 +1,6 @@
 import {IWeatherService} from './IWeatherService';
-import {Location, WeatherData, WeatherServiceError} from './types';
+import {DailyForecast, Location, WeatherData, WeatherServiceError} from './types';
 
-/**
- * Maps WMO weather interpretation codes to human-readable strings.
- * https://open-meteo.com/en/docs — see "WMO Weather interpretation codes"
- */
 function wmoCodeToCondition(code: number): string {
   if (code === 0) return 'Clear sky';
   if (code === 1) return 'Mainly clear';
@@ -24,6 +20,8 @@ function wmoCodeToCondition(code: number): string {
   return 'Unknown';
 }
 
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 interface GeocodingResult {
   name: string;
   latitude: number;
@@ -40,6 +38,12 @@ interface ForecastResponse {
     temperature_2m: number;
     weather_code: number;
   };
+  daily: {
+    time: string[];
+    temperature_2m_max: number[];
+    temperature_2m_min: number[];
+    weather_code: number[];
+  };
 }
 
 export class OpenMeteoService implements IWeatherService {
@@ -50,17 +54,13 @@ export class OpenMeteoService implements IWeatherService {
   private readonly forecastBaseUrl = 'https://api.open-meteo.com/v1/forecast';
 
   async fetchWeather(location: Location): Promise<WeatherData> {
-    // Step 1: Geocode the location string → lat/lon
     const geoUrl = `${this.geocodingBaseUrl}?name=${encodeURIComponent(location.query)}&count=1&language=en&format=json`;
 
     let geoData: GeocodingResponse;
     try {
       const geoRes = await fetch(geoUrl);
       if (!geoRes.ok) {
-        throw new WeatherServiceError(
-          'Geocoding request failed',
-          'SERVICE_UNAVAILABLE',
-        );
+        throw new WeatherServiceError('Geocoding request failed', 'SERVICE_UNAVAILABLE');
       }
       geoData = (await geoRes.json()) as GeocodingResponse;
     } catch (err) {
@@ -69,27 +69,22 @@ export class OpenMeteoService implements IWeatherService {
     }
 
     if (!geoData.results || geoData.results.length === 0) {
-      throw new WeatherServiceError(
-        `Location "${location.query}" not found`,
-        'NOT_FOUND',
-      );
+      throw new WeatherServiceError(`Location "${location.query}" not found`, 'NOT_FOUND');
     }
 
     const {latitude, longitude, name, country} = geoData.results[0];
 
-    // Step 2: Fetch current weather using coordinates
     const forecastUrl =
       `${this.forecastBaseUrl}?latitude=${latitude}&longitude=${longitude}` +
-      `&current=temperature_2m,weather_code&timezone=auto`;
+      `&current=temperature_2m,weather_code` +
+      `&daily=temperature_2m_max,temperature_2m_min,weather_code` +
+      `&timezone=auto&forecast_days=7`;
 
     let forecastData: ForecastResponse;
     try {
       const forecastRes = await fetch(forecastUrl);
       if (!forecastRes.ok) {
-        throw new WeatherServiceError(
-          'Forecast request failed',
-          'SERVICE_UNAVAILABLE',
-        );
+        throw new WeatherServiceError('Forecast request failed', 'SERVICE_UNAVAILABLE');
       }
       forecastData = (await forecastRes.json()) as ForecastResponse;
     } catch (err) {
@@ -97,11 +92,22 @@ export class OpenMeteoService implements IWeatherService {
       throw new WeatherServiceError('Network error fetching forecast', 'NETWORK');
     }
 
+    const forecast: DailyForecast[] = forecastData.daily.time.map((dateStr, i) => {
+      const dayIndex = new Date(dateStr).getDay();
+      return {
+        day: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : DAY_NAMES[dayIndex],
+        tempMax: Math.round(forecastData.daily.temperature_2m_max[i]),
+        tempMin: Math.round(forecastData.daily.temperature_2m_min[i]),
+        condition: wmoCodeToCondition(forecastData.daily.weather_code[i]),
+      };
+    });
+
     return {
       temperature: forecastData.current.temperature_2m,
       condition: wmoCodeToCondition(forecastData.current.weather_code),
       location: `${name}, ${country}`,
       source: this.name,
+      forecast,
     };
   }
 }

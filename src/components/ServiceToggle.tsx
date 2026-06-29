@@ -14,56 +14,62 @@ const ServiceToggle: React.FC<ServiceToggleProps> = ({
   onSelect,
 }) => {
   return (
-    <View style={styles.container}>
-      {options.map(name => {
-        const isSelected = name === selected;
-        const theme = getServiceTheme(name);
-        return (
-          <Pressable
-            key={name}
-            onPress={() => onSelect(name)}
-            accessibilityRole="button"
-            accessibilityState={{selected: isSelected}}
-            accessibilityLabel={`Switch to ${name}`}
-            style={[
-              styles.button,
-              isSelected
-                ? {backgroundColor: theme.accent, borderColor: theme.accent}
-                : styles.buttonIdle,
-            ]}>
-            <Text style={[styles.label, isSelected && styles.labelSelected]}>
-              {name}
-            </Text>
-          </Pressable>
-        );
-      })}
+    <View style={styles.wrapper}>
+      <View style={styles.container}>
+        {options.map(name => {
+          const isSelected = name === selected;
+          const theme = getServiceTheme(name);
+          return (
+            <Pressable
+              key={name}
+              onPress={() => onSelect(name)}
+              accessibilityRole="button"
+              accessibilityState={{selected: isSelected}}
+              accessibilityLabel={`Switch to ${name}`}
+              style={[
+                styles.button,
+                isSelected && {backgroundColor: theme.accent},
+              ]}>
+              <Text style={[styles.label, isSelected && styles.labelSelected]}>
+                {name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    paddingHorizontal: 16,
+  },
   container: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   button: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 12,
     alignItems: 'center',
-  },
-  buttonIdle: {
-    borderColor: '#E0E0E0',
   },
   label: {
     fontSize: 14,
-    color: '#1A1A1A',
+    color: '#8A9BB0',
+    fontWeight: '500',
   },
   labelSelected: {
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
 

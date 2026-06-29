@@ -1,6 +1,5 @@
 import React from 'react';
 import {StyleSheet, Text, TextInput, View} from 'react-native';
-import {colors} from '../theme/colors';
 
 export interface LocationInputProps {
   value: string;
@@ -24,8 +23,8 @@ const LocationInput: React.FC<LocationInputProps> = ({
         value={value}
         onChangeText={onChangeText}
         onSubmitEditing={onSubmit}
-        placeholder="Enter a city, e.g. Berlin"
-        placeholderTextColor={colors.textSecondary}
+        placeholder="🔍  Search city..."
+        placeholderTextColor="#8A9BB0"
         autoCorrect={false}
         autoCapitalize="words"
         returnKeyType="search"
@@ -46,21 +45,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 16,
-    color: colors.text,
+    color: '#1A2B4A',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   inputError: {
-    borderColor: colors.error,
+    borderWidth: 1,
+    borderColor: '#CC3300',
   },
   errorText: {
-    marginTop: 4,
+    marginTop: 6,
     fontSize: 12,
-    color: colors.error,
+    color: '#CC3300',
+    paddingHorizontal: 4,
   },
 });
 
