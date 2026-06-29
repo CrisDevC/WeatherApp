@@ -1,31 +1,51 @@
 /**
  * OpenWeatherMapService tests.
- *
- * @env is mocked via jest.mock so we don't need a real .env file in CI.
+ * The API key is passed directly to the constructor so tests are independent
+ * of how Jest resolves the @env virtual module.
  */
-jest.mock('@env', () => ({OPENWEATHERMAP_API_KEY: 'test-api-key'}), {
-  virtual: true,
-});
+jest.mock('@env', () => ({OPENWEATHERMAP_API_KEY: ''}), {virtual: true});
 
 import {OpenWeatherMapService} from '../services/OpenWeatherMapService';
 import {WeatherServiceError} from '../services/types';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+const TEST_KEY = 'test-api-key';
 
-function mockFetch(ok: boolean, status: number, body: unknown) {
-  global.fetch = jest.fn().mockResolvedValue({
-    ok,
-    status,
-    json: () => Promise.resolve(body),
-  }) as jest.Mock;
-}
+// ── Fixtures ─────────────────────────────────────────────────────────────────
 
-const OWM_SUCCESS_BODY = {
+const OWM_CURRENT_BODY = {
   name: 'London',
   sys: {country: 'GB'},
   main: {temp: 15.3},
   weather: [{description: 'light rain'}],
 };
+
+const OWM_FORECAST_BODY = {
+  list: [
+    {dt: 1700000000, main: {temp_max: 17, temp_min: 12}, weather: [{description: 'light rain'}]},
+    {dt: 1700086400, main: {temp_max: 18, temp_min: 13}, weather: [{description: 'clear sky'}]},
+  ],
+};
+
+/**
+ * Mocks fetch — routes by URL substring so Promise.all gets the right body
+ * for /weather vs /forecast.
+ */
+function mockFetchBoth(
+  currentOk: boolean,
+  currentStatus: number,
+  currentBody: unknown,
+  forecastOk = true,
+  forecastBody: unknown = OWM_FORECAST_BODY,
+) {
+  global.fetch = jest.fn().mockImplementation((url: string) => {
+    const isForecast = url.includes('/forecast');
+    return Promise.resolve({
+      ok: isForecast ? forecastOk : currentOk,
+      status: isForecast ? 200 : currentStatus,
+      json: () => Promise.resolve(isForecast ? forecastBody : currentBody),
+    });
+  }) as jest.Mock;
+}
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +53,8 @@ describe('OpenWeatherMapService', () => {
   let service: OpenWeatherMapService;
 
   beforeEach(() => {
-    service = new OpenWeatherMapService();
+    // Pass key directly — no @env module resolution needed
+    service = new OpenWeatherMapService(TEST_KEY);
     jest.resetAllMocks();
   });
 
@@ -42,55 +63,61 @@ describe('OpenWeatherMapService', () => {
   });
 
   it('returns weather data for a valid location', async () => {
-    mockFetch(true, 200, OWM_SUCCESS_BODY);
+    mockFetchBoth(true, 200, OWM_CURRENT_BODY);
 
     const result = await service.fetchWeather({query: 'London'});
 
     expect(result.location).toBe('London, GB');
     expect(result.temperature).toBe(15.3);
-    expect(result.condition).toBe('Light rain'); // capitalised
+    expect(result.condition).toBe('Light rain');
     expect(result.source).toBe('OpenWeatherMap');
   });
 
+  it('returns forecast data', async () => {
+    mockFetchBoth(true, 200, OWM_CURRENT_BODY);
+
+    const result = await service.fetchWeather({query: 'London'});
+
+    expect(result.forecast).toBeDefined();
+    expect(result.forecast!.length).toBeGreaterThan(0);
+  });
+
   it('capitalises the first letter of the condition description', async () => {
-    mockFetch(true, 200, {
-      ...OWM_SUCCESS_BODY,
-      weather: [{description: 'scattered clouds'}],
-    });
+    mockFetchBoth(true, 200, {...OWM_CURRENT_BODY, weather: [{description: 'scattered clouds'}]});
 
     const result = await service.fetchWeather({query: 'London'});
     expect(result.condition).toBe('Scattered clouds');
   });
 
   it('includes the API key in the request URL', async () => {
-    mockFetch(true, 200, OWM_SUCCESS_BODY);
+    mockFetchBoth(true, 200, OWM_CURRENT_BODY);
 
     await service.fetchWeather({query: 'London'});
 
-    const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
-    expect(url).toContain('appid=test-api-key');
-    expect(url).toContain('units=metric');
+    const urls = (global.fetch as jest.Mock).mock.calls.map(c => c[0] as string);
+    expect(urls.some(u => u.includes(`appid=${TEST_KEY}`))).toBe(true);
+    expect(urls.some(u => u.includes('units=metric'))).toBe(true);
   });
 
   it('URL-encodes the location query', async () => {
-    mockFetch(true, 200, OWM_SUCCESS_BODY);
+    mockFetchBoth(true, 200, OWM_CURRENT_BODY);
 
     await service.fetchWeather({query: 'New York'});
 
-    const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
-    expect(url).toContain(encodeURIComponent('New York'));
+    const urls = (global.fetch as jest.Mock).mock.calls.map(c => c[0] as string);
+    expect(urls.some(u => u.includes(encodeURIComponent('New York')))).toBe(true);
   });
 
   it('throws NOT_FOUND on HTTP 404', async () => {
-    mockFetch(false, 404, {});
+    mockFetchBoth(false, 404, {});
 
     await expect(service.fetchWeather({query: 'Zzznotaplace'})).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
   });
 
-  it('throws SERVICE_UNAVAILABLE on HTTP 401 (invalid key)', async () => {
-    mockFetch(false, 401, {});
+  it('throws SERVICE_UNAVAILABLE on HTTP 401', async () => {
+    mockFetchBoth(false, 401, {});
 
     await expect(service.fetchWeather({query: 'London'})).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
@@ -98,7 +125,7 @@ describe('OpenWeatherMapService', () => {
   });
 
   it('throws SERVICE_UNAVAILABLE on other HTTP errors', async () => {
-    mockFetch(false, 500, {});
+    mockFetchBoth(false, 500, {});
 
     await expect(service.fetchWeather({query: 'London'})).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
@@ -114,7 +141,7 @@ describe('OpenWeatherMapService', () => {
   });
 
   it('throws an instance of WeatherServiceError on failure', async () => {
-    mockFetch(false, 404, {});
+    mockFetchBoth(false, 404, {});
 
     await expect(service.fetchWeather({query: 'Nowhere'})).rejects.toBeInstanceOf(
       WeatherServiceError,
@@ -125,18 +152,9 @@ describe('OpenWeatherMapService', () => {
 // ── Missing API key ───────────────────────────────────────────────────────────
 
 describe('OpenWeatherMapService — missing API key', () => {
-  beforeEach(() => {
-    jest.resetModules();
-    jest.mock('@env', () => ({OPENWEATHERMAP_API_KEY: ''}), {virtual: true});
-  });
-
   it('throws SERVICE_UNAVAILABLE when the API key is empty', async () => {
-    // Re-import after resetting modules so the new mock takes effect.
-    const {OpenWeatherMapService: Fresh} =
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      require('../services/OpenWeatherMapService') as typeof import('../services/OpenWeatherMapService');
-
-    const svc = new Fresh();
+    // Pass empty key directly — no module reset needed
+    const svc = new OpenWeatherMapService('');
     await expect(svc.fetchWeather({query: 'London'})).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
     });

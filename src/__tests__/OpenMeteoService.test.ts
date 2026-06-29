@@ -24,10 +24,18 @@ const GEO_SUCCESS = {
   },
 };
 
+const DAILY = {
+  time: ['2026-06-29', '2026-06-30', '2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04', '2026-07-05'],
+  temperature_2m_max: [20, 22, 21, 19, 18, 23, 24],
+  temperature_2m_min: [12, 14, 13, 11, 10, 15, 16],
+  weather_code: [1, 2, 3, 61, 0, 45, 80],
+};
+
 const FORECAST_SUCCESS = {
   ok: true,
   body: {
     current: {temperature_2m: 18.5, weather_code: 1},
+    daily: DAILY,
   },
 };
 
@@ -54,6 +62,17 @@ describe('OpenMeteoService', () => {
     expect(result.temperature).toBe(18.5);
     expect(result.condition).toBe('Mainly clear');
     expect(result.source).toBe('Open-Meteo');
+  });
+
+  it('returns forecast data', async () => {
+    mockFetch(GEO_SUCCESS, FORECAST_SUCCESS);
+
+    const result = await service.fetchWeather({query: 'Berlin'});
+
+    expect(result.forecast).toBeDefined();
+    expect(result.forecast?.length).toBe(7);
+    expect(result.forecast?.[0].day).toBe('Today');
+    expect(result.forecast?.[1].day).toBe('Tomorrow');
   });
 
   it('calls geocoding endpoint first, then forecast endpoint', async () => {
@@ -141,7 +160,7 @@ describe('OpenMeteoService', () => {
   it.each(wmoCases)('maps WMO code %i to "%s"', async (code, expected) => {
     mockFetch(GEO_SUCCESS, {
       ok: true,
-      body: {current: {temperature_2m: 10, weather_code: code}},
+      body: {current: {temperature_2m: 10, weather_code: code}, daily: DAILY},
     });
 
     const result = await service.fetchWeather({query: 'Berlin'});

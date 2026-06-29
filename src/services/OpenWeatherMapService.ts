@@ -29,9 +29,14 @@ export class OpenWeatherMapService implements IWeatherService {
   readonly name = 'OpenWeatherMap';
 
   private readonly baseUrl = 'https://api.openweathermap.org/data/2.5';
+  private readonly apiKey: string;
+
+  constructor(apiKey: string = OPENWEATHERMAP_API_KEY) {
+    this.apiKey = apiKey;
+  }
 
   async fetchWeather(location: Location): Promise<WeatherData> {
-    const apiKey = OPENWEATHERMAP_API_KEY;
+    const apiKey = this.apiKey;
 
     if (!apiKey) {
       throw new WeatherServiceError(
